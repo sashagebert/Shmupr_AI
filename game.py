@@ -80,9 +80,16 @@ def draw_health_bar(surface, x, y, health):
     pygame.draw.rect(surface, GREEN, fill_rect)
     pygame.draw.rect(surface, WHITE, outline_rect, 2)
 
+
+def draw_lives(surface, x, y, lives, img):
+    for i in range(lives):
+        img_rect = img.get_rect()
+        img_rect.x = x + 35 * i
+        img_rect.y = y
+        surface.blit(img, img_rect)
+
+
 # Draw text, used for the score
-
-
 def draw_text(surface, text, size, x, y):
     font = pygame.font.Font(font_name, size)
     text_surface = font.render(text, True, WHITE)
@@ -111,14 +118,26 @@ class Player(pygame.sprite.Sprite):
         self.velocity = 0
         self.flycount = 0
         self.health = 100
+        self.shoot_delay = 250
+        self.last_shot = pygame.time.get_ticks()
+        self.lives = 3
+        self.hidden = False
+        self.hide_timer = pygame.time.get_ticks()
 
     def update(self):
+        if self.hidden and pygame.time.get_ticks() - self.hide_timer > 1000:
+            self.hidden = False
+            self.rect.centerx = WIDTH / 2
+            self.rect.bottom = HEIGHT - 10
+
         self.velocity = 0
         keystate = pygame.key.get_pressed()
         if keystate[pygame.K_LEFT]:
             self.velocity = -5
         if keystate[pygame.K_RIGHT]:
             self.velocity = 5
+        if keystate[pygame.K_SPACE]:
+            self.shoot()
         self.rect.x += self.velocity
         if self.rect.right > WIDTH:
             self.rect.right = WIDTH
@@ -126,10 +145,35 @@ class Player(pygame.sprite.Sprite):
             self.rect.left = 0
 
     def shoot(self):
-        laser = PlayerLaser(self.rect.centerx, self.rect.top)
-        all_sprites.add(laser)
-        player_lasers.add(laser)
-        laser_sound.play()
+        now = pygame.time.get_ticks()
+        if now - self.last_shot > self.shoot_delay:
+            self.last_shot = now
+            laser = PlayerLaser(self.rect.centerx, self.rect.top)
+            all_sprites.add(laser)
+            player_lasers.add(laser)
+            laser_sound.play()
+
+    def hide(self):
+        # hide the player when dead
+        self.hidden = True
+        self.hide_timer = pygame.time.get_ticks()
+        self.rect.center = (WIDTH / 2, HEIGHT + 200)
+
+    def dead(self):
+        player_death_expl = Explosion(hit.rect.center, 'lg')
+        all_sprites.add(player_death_expl)
+        player.hide()
+        player.lives -= 1
+        player.health = 100
+
+    def isShot(self, size):
+        expl = Explosion(hit.rect.center, size)
+        all_sprites.add(expl)
+        if size == 'sm':
+            player.health -= 20
+        else:
+            player.health -= 40
+
 
 # Enemy class
 
@@ -231,21 +275,69 @@ class PlayerLaser(Laser):
         if self.rect.bottom < 0:
             self.kill()
 
+# Explosion class
+
+
+class Explosion(pygame.sprite.Sprite):
+    def __init__(self, center, size):
+        pygame.sprite.Sprite.__init__(self)
+        self.size = size
+        self.image = explosion_anim[self.size][0]
+        self.rect = self.image.get_rect()
+        self.rect.center = center
+        self.frame = 0
+        self.last_update = pygame.time.get_ticks()
+        self.frame_rate = 25
+
+    def update(self):
+        now = pygame.time.get_ticks()
+        if now - self.last_update > self.frame_rate:
+            self.last_update = now
+            self.frame += 1
+            if self.frame == len(explosion_anim[self.size]):
+                self.kill()
+            else:
+                center = self.rect.center
+                self.image = explosion_anim[self.size][self.frame]
+                self.rect = self.image.get_rect()
+                self.rect.center = center
+
 
 # Load images
 background = pygame.image.load(path.join(img_dir, 'spacebg.jpg')).convert()
 background_rect = background.get_rect()
 player_img = pygame.image.load(path.join(img_dir, 's1.png')).convert()
+player_img.set_colorkey(BLACK)
+mini_player_img = pygame.transform.scale(player_img, (25, 25))
 regular_enemy_img = pygame.image.load(
     path.join(img_dir, 'enemyShuttle1.png')).convert()
 upgraded_enemy_img = pygame.image.load(
     path.join(img_dir, 'enemyShuttle2.png')).convert()
-enemy_laser_img = pygame.image.load(path.join(img_dir, 'enemyLaser.png'))
-player_laser_img = pygame.image.load(path.join(img_dir, 'playerLaser.png'))
+enemy_laser_img = pygame.image.load(
+    path.join(img_dir, 'enemyLaser.png'))
+player_laser_img = pygame.image.load(
+    path.join(img_dir, 'playerLaser.png'))
+
+
+# Load explosion animation
+explosion_anim = {'lg': [],
+                  'rg': [],
+                  'sm': []}
+for i in range(9):
+    filename = 'e{}.png'.format(i)
+    img = pygame.image.load(path.join(img_dir, filename)).convert()
+    img.set_colorkey(BLACK)
+    img_lg = pygame.transform.scale((img), (42, 42))
+    explosion_anim['lg'].append(img_lg)
+    img_rg = pygame.transform.scale((img), (30, 30))
+    explosion_anim['rg'].append(img_rg)
+    img_sm = pygame.transform.scale((img), (20, 20))
+    explosion_anim['sm'].append(img_sm)
+
 
 # Load sounds
 player_exp_sound = pygame.mixer.Sound(path.join(sound_dir, 'playerExp.wav'))
-player_exp_sound.set_volume(0.1)
+player_exp_sound.set_volume(0.2)
 enemy_exp_sound = pygame.mixer.Sound(path.join(sound_dir, 'enemyExp.flac'))
 enemy_exp_sound.set_volume(0.7)
 laser_sound = pygame.mixer.Sound(path.join(sound_dir, 'laser.wav'))
@@ -261,7 +353,7 @@ enemy_lasers = pygame.sprite.Group()
 player = Player()
 all_sprites.add(player)
 
-# Spawn 7 enemies initially, 2 of them have to me upgraded enemies
+# Spawn 7 enemies initially, 2 of them have to be upgraded enemies
 for i in range(4):
     e = RegularEnemy()
     all_sprites.add(e)
@@ -285,48 +377,52 @@ while running:
         if event.type == pygame.QUIT:
             running = False
 
-        elif event.type == pygame.KEYDOWN:
-            if event.key == pygame.K_SPACE:
-                player.shoot()
-
         elif event.type == ENEMYSHOT:
             for enemy in enemies:
                 if type(enemy) == UpdgradedEnemy:
-                    if random.uniform(0, 1) < 0.4:
+                    if random.uniform(0, 1) < 0.5:
                         enemy.shoot()
 
     # Update sprites
     all_sprites.update()
 
-    # Check if the player is hit by an enemy laser
-    hits = pygame.sprite.spritecollide(
-        player, enemy_lasers, True, pygame.sprite.collide_circle)
-    for hit in hits:
-        player_exp_sound.play()
-        player.health -= 20
-        if player.health <= 0:
-            running = False
-
     hits = pygame.sprite.groupcollide(enemies, player_lasers, True, True)
 
-    # Check if an enemy is hit by a players laser
+    # Check if a player hit an enemy
     for hit in hits:
         enemy_exp_sound.play()
         if type(hit) == RegularEnemy:
             score += 10
         else:
             score += 20
+        expl = Explosion(hit.rect.center, 'lg')
+        all_sprites.add(expl)
         spawn_random_enemy()
+
+    # Check if the player is hit by an enemy laser
+    hits = pygame.sprite.spritecollide(
+        player, enemy_lasers, True, pygame.sprite.collide_circle)
+    for hit in hits:
+        player_exp_sound.play()
+        if player.health <= 0:
+            player.dead()
+        else:
+            player.isShot('sm')
 
     # check if an enemy hit the player
     hits = pygame.sprite.spritecollide(
         player, enemies, True, pygame.sprite.collide_circle)
     for hit in hits:
         player_exp_sound.play()
-        player.health -= 40
         if player.health <= 0:
-            running = False
+            player.dead()
+        else:
+            player.isShot('rg')
+
         spawn_random_enemy()
+
+    if player.lives < 1 and not player_death_expl.alive():
+        running = False
 
     # Render
     window.fill(BLACK)
@@ -334,6 +430,7 @@ while running:
     all_sprites.draw(window)
     draw_text(window, str(score), 22, WIDTH / 2, 10)
     draw_health_bar(window, WIDTH-205, 5, player.health)
+    draw_lives(window, WIDTH-205, 40, player.lives, mini_player_img)
     pygame.display.flip()
 
 pygame.quit()
