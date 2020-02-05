@@ -8,6 +8,10 @@ from os import path
 #   Gumichan01
 #   Duckstruction
 #   http://cubeengine.com/forum.php4?action=display_thread&thread_id=2164
+#   Jesús Lastra
+
+# Graphics
+#   Credit "Kenney.nl" or "www.kenney.nl"
 
 
 # Center the game window
@@ -24,6 +28,10 @@ sound_dir = path.join(path.dirname(__file__), 'sound')
 WIDTH = 900
 HEIGHT = 900
 FPS = 120
+POWERUP_TIME = 5000
+
+# Custom event to keep track of enemy shots
+ENEMYSHOT = pygame.USEREVENT+1
 
 # Set colours
 RED = (255, 0, 0)
@@ -103,6 +111,71 @@ def range_with_no_number(start, end, exclude):
     l = [i for i in range(start, end) if i != exclude]
     return random.choice(l)
 
+
+def initialise_game():
+    # Ground different sprites together
+    global all_sprites
+    all_sprites = pygame.sprite.Group()
+    global enemies
+    enemies = pygame.sprite.Group()
+    global player_lasers
+    player_lasers = pygame.sprite.Group()
+    global enemy_lasers
+    enemy_lasers = pygame.sprite.Group()
+    global powerups
+    powerups = pygame.sprite.Group()
+    global player
+    player = Player()
+    all_sprites.add(player)
+
+    # Spawn 7 enemies initially, 2 of them have to be upgraded enemies
+    for i in range(4):
+        e = RegularEnemy()
+        all_sprites.add(e)
+        enemies.add(e)
+    for i in range(2):
+        e = UpdgradedEnemy()
+        all_sprites.add(e)
+        enemies.add(e)
+
+    pygame.time.set_timer(ENEMYSHOT, 500)
+
+
+def show_start_screen():
+    draw_text(window, "ShuttleBattle", 64, WIDTH/2, HEIGHT/4)
+    draw_text(window, "Arrow keys to move, space to shoot",
+              22, WIDTH/2, HEIGHT/2)
+    draw_text(window, "Press a key to begin", 18, WIDTH/2, HEIGHT*3/4)
+    pygame.display.flip()
+    waiting = True
+    while waiting:
+        clock.tick(FPS)
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit()
+            elif event.type == pygame.KEYUP:
+                waiting = False
+
+
+def show_game_over_screen():
+    window.blit(background, background_rect)
+    draw_text(window, "Game Over", 64, WIDTH/2, HEIGHT/4)
+    score_string = "Your score is " + str(player.score)
+    print(score_string)
+    draw_text(window, score_string,
+              22, WIDTH/2, HEIGHT/2)
+    draw_text(window, "Press a key to try again", 18, WIDTH/2, HEIGHT*3/4)
+    pygame.display.flip()
+    pygame.time.delay(2000)
+    waiting = True
+    while waiting:
+        clock.tick(FPS)
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit()
+            elif event.type == pygame.KEYUP:
+                waiting = False
+
 # Player class
 
 
@@ -123,10 +196,14 @@ class Player(pygame.sprite.Sprite):
         self.lives = 3
         self.hidden = False
         self.hide_timer = pygame.time.get_ticks()
+        self.is_poweredup = False
+        self.powerup_time = pygame.time.get_ticks()
+        self.score = 0
 
     def update(self):
         if self.hidden and pygame.time.get_ticks() - self.hide_timer > 1000:
             self.hidden = False
+            self.shoot_delay = 250
             self.rect.centerx = WIDTH / 2
             self.rect.bottom = HEIGHT - 10
 
@@ -144,24 +221,40 @@ class Player(pygame.sprite.Sprite):
         if self.rect.left < 0:
             self.rect.left = 0
 
+        # Powerup timeout
+        if self.is_poweredup and pygame.time.get_ticks() - self.powerup_time > POWERUP_TIME:
+            self.is_poweredup = False
+            self.powerup_time = pygame.time.get_ticks()
+            player.shoot_delay = 250
+
     def shoot(self):
         now = pygame.time.get_ticks()
         if now - self.last_shot > self.shoot_delay:
             self.last_shot = now
-            laser = PlayerLaser(self.rect.centerx, self.rect.top)
-            all_sprites.add(laser)
-            player_lasers.add(laser)
-            laser_sound.play()
+            if self.is_poweredup:
+                laser_left = PlayerLaser(self.rect.left+5, self.rect.centery)
+                laser_right = PlayerLaser(self.rect.right-5, self.rect.centery)
+                all_sprites.add(laser_left)
+                all_sprites.add(laser_right)
+                player_lasers.add(laser_left)
+                player_lasers.add(laser_right)
+                laser_sound.play()
+            else:
+                laser = PlayerLaser(self.rect.centerx, self.rect.top)
+                all_sprites.add(laser)
+                player_lasers.add(laser)
+                laser_sound.play()
 
     def hide(self):
         # hide the player when dead
         self.hidden = True
         self.hide_timer = pygame.time.get_ticks()
-        self.rect.center = (WIDTH / 2, HEIGHT + 200)
+        self.rect.center = (WIDTH + 500, HEIGHT + 200)
+        self.shoot_delay = 10000
 
     def dead(self):
-        player_death_expl = Explosion(hit.rect.center, 'lg')
-        all_sprites.add(player_death_expl)
+        self.player_death_expl = Explosion(hit.rect.center, 'lg')
+        all_sprites.add(self.player_death_expl)
         player.hide()
         player.lives -= 1
         player.health = 100
@@ -173,6 +266,11 @@ class Player(pygame.sprite.Sprite):
             player.health -= 20
         else:
             player.health -= 40
+
+    def gun_powerup(self):
+        self.is_poweredup = True
+        self.powerup_time = pygame.time.get_ticks()
+        player.shoot_delay = 125
 
 
 # Enemy class
@@ -275,6 +373,25 @@ class PlayerLaser(Laser):
         if self.rect.bottom < 0:
             self.kill()
 
+# PowerUp class
+
+
+class PowerUp(pygame.sprite.Sprite):
+    def __init__(self, center):
+        pygame.sprite.Sprite.__init__(self)
+        self.type = random.choice(['shield', 'double_tap', 'recharge'])
+        self.image = powerup_img[self.type]
+        self.image.set_colorkey(BLACK)
+        self.rect = self.image.get_rect()
+        self.rect.center = center
+        self.y_velocity = 3
+
+    def update(self):
+        self.rect.y += self.y_velocity
+        if self.rect.top < 0:
+            self.kill()
+
+
 # Explosion class
 
 
@@ -319,6 +436,11 @@ player_laser_img = pygame.image.load(
     path.join(img_dir, 'playerLaser.png'))
 
 
+powerup_img = {'shield': pygame.image.load(path.join(img_dir, 'shield.png')).convert(),
+               'double_tap': pygame.image.load(path.join(img_dir, 'double_tap.png')).convert(),
+               'recharge': pygame.image.load(path.join(img_dir, 'recharge.png')).convert()}
+
+
 # Load explosion animation
 explosion_anim = {'lg': [],
                   'rg': [],
@@ -339,39 +461,30 @@ for i in range(9):
 player_exp_sound = pygame.mixer.Sound(path.join(sound_dir, 'playerExp.wav'))
 player_exp_sound.set_volume(0.2)
 enemy_exp_sound = pygame.mixer.Sound(path.join(sound_dir, 'enemyExp.flac'))
-enemy_exp_sound.set_volume(0.7)
+enemy_exp_sound.set_volume(0.6)
 laser_sound = pygame.mixer.Sound(path.join(sound_dir, 'laser.wav'))
 laser_sound.set_volume(0.1)
 background_sound = pygame.mixer.music.load(path.join(sound_dir, 'theme.ogg'))
 pygame.mixer.music.set_volume(0.4)
-
-# Ground different sprites together
-all_sprites = pygame.sprite.Group()
-enemies = pygame.sprite.Group()
-player_lasers = pygame.sprite.Group()
-enemy_lasers = pygame.sprite.Group()
-player = Player()
-all_sprites.add(player)
-
-# Spawn 7 enemies initially, 2 of them have to be upgraded enemies
-for i in range(4):
-    e = RegularEnemy()
-    all_sprites.add(e)
-    enemies.add(e)
-for i in range(2):
-    e = UpdgradedEnemy()
-    all_sprites.add(e)
-    enemies.add(e)
-
-
 pygame.mixer.music.play(loops=-1)
-# Custom event to keep track of enemy shots
-ENEMYSHOT = pygame.USEREVENT+1
-pygame.time.set_timer(ENEMYSHOT, 500)
+shield_sound = pygame.mixer.Sound(path.join(sound_dir, 'shield.wav'))
+shield_sound.set_volume(0.6)
+recharge_sound = pygame.mixer.Sound(path.join(sound_dir, 'recharge.wav'))
+recharge_sound.set_volume(0.6)
+double_tap_sound = pygame.mixer.Sound(
+    path.join(sound_dir, 'double_tap.wav'))
+double_tap_sound.set_volume(0.3)
+
+show_start_screen()
+initialise_game()
+game_over = False
 running = True
 # Loop
-score = 0
 while running:
+    if game_over:
+        show_game_over_screen()
+        game_over = False
+        initialise_game()
     clock.tick(FPS)
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
@@ -392,11 +505,15 @@ while running:
     for hit in hits:
         enemy_exp_sound.play()
         if type(hit) == RegularEnemy:
-            score += 10
+            player.score += 10
         else:
-            score += 20
+            player.score += 20
         expl = Explosion(hit.rect.center, 'lg')
         all_sprites.add(expl)
+        if random.random() > 0.1:
+            powerup = PowerUp(hit.rect.center)
+            all_sprites.add(powerup)
+            powerups.add(powerup)
         spawn_random_enemy()
 
     # Check if the player is hit by an enemy laser
@@ -421,16 +538,42 @@ while running:
 
         spawn_random_enemy()
 
-    if player.lives < 1 and not player_death_expl.alive():
-        running = False
+    # check if player collides with a powerup
+    hits = pygame.sprite.spritecollide(player, powerups, True)
+    for hit in hits:
+        if hit.type == 'recharge':
+            recharge_sound.play()
+            player.health += 50
+            if player.health >= 100:
+                player.health = 100
+        elif hit.type == 'shield':
+            shield_sound.play()
+            player.lives += 1
+            if player.lives >= 3:
+                player.lives = 3
+        elif hit.type == 'double_tap':
+            double_tap_sound.play()
+            player.gun_powerup()
+
+    if player.lives < 1 and not player.player_death_expl.alive():
+        game_over = True
 
     # Render
     window.fill(BLACK)
     window.blit(background, background_rect)
     all_sprites.draw(window)
-    draw_text(window, str(score), 22, WIDTH / 2, 10)
+    draw_text(window, str(player.score), 22, WIDTH / 2, 10)
     draw_health_bar(window, WIDTH-205, 5, player.health)
     draw_lives(window, WIDTH-205, 40, player.lives, mini_player_img)
     pygame.display.flip()
 
 pygame.quit()
+
+
+
+
+#player animation 
+#powerup spawn random
+#optimisation?
+#comment?
+#score font size
