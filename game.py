@@ -27,6 +27,7 @@ sound_dir = path.join(path.dirname(__file__), 'sound')
 # Set dimensions
 WIDTH = 900
 HEIGHT = 900
+# Set variables
 FPS = 120
 POWERUP_TIME = 5000
 
@@ -34,10 +35,7 @@ POWERUP_TIME = 5000
 ENEMYSHOT = pygame.USEREVENT+1
 
 # Set colours
-RED = (255, 0, 0)
-GREEN = (0, 255, 0)
-BLUE = (0, 0, 255)
-YELLOW = (255, 255, 0)
+GREEN = (0,255,0)
 BLACK = (0, 0, 0)
 WHITE = (255, 255, 255)
 
@@ -45,11 +43,12 @@ WHITE = (255, 255, 255)
 # Center the window, initialise pygame and create window
 centerWindow()
 
+#Init pygame and pymixer
 pygame.mixer.pre_init(44100, -16, 2, 2048)
 pygame.mixer.init()
 pygame.init()
 window = pygame.display.set_mode((WIDTH, HEIGHT))
-pygame.display.set_caption("Asteroid")
+pygame.display.set_caption("ShuttleBattle")
 clock = pygame.time.Clock()
 
 font_name = pygame.font.match_font('arial')
@@ -75,8 +74,6 @@ def spawn_random_enemy():
         spawn_regular_enemy()
 
 # Draw health bar
-
-
 def draw_health_bar(surface, x, y, health):
     if health < 0:
         health = 0
@@ -89,6 +86,7 @@ def draw_health_bar(surface, x, y, health):
     pygame.draw.rect(surface, WHITE, outline_rect, 2)
 
 
+# Draw lives left
 def draw_lives(surface, x, y, lives, img):
     for i in range(lives):
         img_rect = img.get_rect()
@@ -145,7 +143,7 @@ def show_start_screen():
     draw_text(window, "ShuttleBattle", 64, WIDTH/2, HEIGHT/4)
     draw_text(window, "Arrow keys to move, space to shoot",
               22, WIDTH/2, HEIGHT/2)
-    draw_text(window, "Press a key to begin", 18, WIDTH/2, HEIGHT*3/4)
+    draw_text(window, "Press any key to begin", 18, WIDTH/2, HEIGHT*3/4)
     pygame.display.flip()
     waiting = True
     while waiting:
@@ -161,10 +159,9 @@ def show_game_over_screen():
     window.blit(background, background_rect)
     draw_text(window, "Game Over", 64, WIDTH/2, HEIGHT/4)
     score_string = "Your score is " + str(player.score)
-    print(score_string)
     draw_text(window, score_string,
-              22, WIDTH/2, HEIGHT/2)
-    draw_text(window, "Press a key to try again", 18, WIDTH/2, HEIGHT*3/4)
+              40, WIDTH/2, HEIGHT/2)
+    draw_text(window, "Press any key to try again", 22, WIDTH/2, HEIGHT*3/4)
     pygame.display.flip()
     pygame.time.delay(2000)
     waiting = True
@@ -188,8 +185,10 @@ class Player(pygame.sprite.Sprite):
         self.radius = 32
         self.rect.centerx = WIDTH / 2
         self.rect.bottom = HEIGHT - 10
-        self.velocity = 0
-        self.flycount = 0
+        self.velocity = 5
+        self.fly_count = 0
+        self.right = False
+        self.left = False
         self.health = 100
         self.shoot_delay = 250
         self.last_shot = pygame.time.get_ticks()
@@ -207,19 +206,45 @@ class Player(pygame.sprite.Sprite):
             self.rect.centerx = WIDTH / 2
             self.rect.bottom = HEIGHT - 10
 
-        self.velocity = 0
         keystate = pygame.key.get_pressed()
-        if keystate[pygame.K_LEFT]:
-            self.velocity = -5
-        if keystate[pygame.K_RIGHT]:
-            self.velocity = 5
+
+        if keystate[pygame.K_LEFT] and self.rect.left > 0:
+            self.rect.x -= self.velocity
+            self.left = True
+            self.right = False
+
+        elif keystate[pygame.K_RIGHT] and self.rect.right < WIDTH:
+            self.rect.x += self.velocity
+            self.left = False
+            self.right = True
+        else:
+            self.left = False
+            self.right = False
+            self.fly_count = 0
+
+        if self.fly_count + 1 > 18:
+            self.fly_count = 17
+
+        if self.fly_count - 1 < -18:
+            self.fly_count = -17
+
+        if self.left and self.fly_count <= 0:
+            self.image = player_anim['left'][abs(self.fly_count) // 3]
+            self.fly_count -= 1
+        elif self.left and self.fly_count > 0:
+            self.image = player_anim['right'][self.fly_count // 3]
+            self.fly_count -= 1
+        elif self.right and self.fly_count >= 0:
+            self.image = player_anim['right'][self.fly_count // 3]
+            self.fly_count += 1
+        elif self.right and self.fly_count < 0:
+            self.image = player_anim['left'][abs(self.fly_count) // 3]
+            self.fly_count += 1
+        else:
+            self.image = player_img
+
         if keystate[pygame.K_SPACE]:
             self.shoot()
-        self.rect.x += self.velocity
-        if self.rect.right > WIDTH:
-            self.rect.right = WIDTH
-        if self.rect.left < 0:
-            self.rect.left = 0
 
         # Powerup timeout
         if self.is_poweredup and pygame.time.get_ticks() - self.powerup_time > POWERUP_TIME:
@@ -258,14 +283,15 @@ class Player(pygame.sprite.Sprite):
         player.hide()
         player.lives -= 1
         player.health = 100
+        player.is_poweredup = False
 
     def isShot(self, size):
         expl = Explosion(hit.rect.center, size)
         all_sprites.add(expl)
         if size == 'sm':
-            player.health -= 20
+            player.health -= 30
         else:
-            player.health -= 40
+            player.health -= 70
 
     def gun_powerup(self):
         self.is_poweredup = True
@@ -379,7 +405,13 @@ class PlayerLaser(Laser):
 class PowerUp(pygame.sprite.Sprite):
     def __init__(self, center):
         pygame.sprite.Sprite.__init__(self)
-        self.type = random.choice(['shield', 'double_tap', 'recharge'])
+        x = random.random()
+        if x<=0.2:
+            self.type = 'double_tap'
+        elif x>0.2 and x<=0.5:
+            self.type = 'shield'
+        else:
+            self.type = 'recharge'
         self.image = powerup_img[self.type]
         self.image.set_colorkey(BLACK)
         self.rect = self.image.get_rect()
@@ -423,7 +455,7 @@ class Explosion(pygame.sprite.Sprite):
 # Load images
 background = pygame.image.load(path.join(img_dir, 'spacebg.jpg')).convert()
 background_rect = background.get_rect()
-player_img = pygame.image.load(path.join(img_dir, 's1.png')).convert()
+player_img = pygame.image.load(path.join(img_dir, 's0.png')).convert()
 player_img.set_colorkey(BLACK)
 mini_player_img = pygame.transform.scale(player_img, (25, 25))
 regular_enemy_img = pygame.image.load(
@@ -439,6 +471,21 @@ player_laser_img = pygame.image.load(
 powerup_img = {'shield': pygame.image.load(path.join(img_dir, 'shield.png')).convert(),
                'double_tap': pygame.image.load(path.join(img_dir, 'double_tap.png')).convert(),
                'recharge': pygame.image.load(path.join(img_dir, 'recharge.png')).convert()}
+
+
+# Load player animation
+player_anim = {'left': [],
+               'right': []
+               }
+for i in range(6):
+    filename = 'l{}.png'.format(i)
+    img_left = pygame.image.load(path.join(img_dir, filename)).convert()
+    img_left.set_colorkey(BLACK)
+    player_anim['left'].append(img_left)
+    filename = 'r{}.png'.format(i)
+    img_right = pygame.image.load(path.join(img_dir, filename)).convert()
+    img_right.set_colorkey(BLACK)
+    player_anim['right'].append(img_right)
 
 
 # Load explosion animation
@@ -458,22 +505,22 @@ for i in range(9):
 
 
 # Load sounds
-player_exp_sound = pygame.mixer.Sound(path.join(sound_dir, 'playerExp.wav'))
+player_exp_sound = pygame.mixer.Sound(path.join(sound_dir, 'player_exp.wav'))
 player_exp_sound.set_volume(0.2)
-enemy_exp_sound = pygame.mixer.Sound(path.join(sound_dir, 'enemyExp.flac'))
-enemy_exp_sound.set_volume(0.6)
+enemy_exp_sound = pygame.mixer.Sound(path.join(sound_dir, 'enemy_exp.wav'))
+enemy_exp_sound.set_volume(0.45)
 laser_sound = pygame.mixer.Sound(path.join(sound_dir, 'laser.wav'))
-laser_sound.set_volume(0.1)
+laser_sound.set_volume(0.05)
 background_sound = pygame.mixer.music.load(path.join(sound_dir, 'theme.ogg'))
-pygame.mixer.music.set_volume(0.4)
+pygame.mixer.music.set_volume(0.35)
 pygame.mixer.music.play(loops=-1)
 shield_sound = pygame.mixer.Sound(path.join(sound_dir, 'shield.wav'))
-shield_sound.set_volume(0.6)
+shield_sound.set_volume(0.5)
 recharge_sound = pygame.mixer.Sound(path.join(sound_dir, 'recharge.wav'))
-recharge_sound.set_volume(0.6)
+recharge_sound.set_volume(0.45)
 double_tap_sound = pygame.mixer.Sound(
     path.join(sound_dir, 'double_tap.wav'))
-double_tap_sound.set_volume(0.3)
+double_tap_sound.set_volume(0.2)
 
 show_start_screen()
 initialise_game()
@@ -510,7 +557,7 @@ while running:
             player.score += 20
         expl = Explosion(hit.rect.center, 'lg')
         all_sprites.add(expl)
-        if random.random() > 0.1:
+        if random.random() > 0.7:
             powerup = PowerUp(hit.rect.center)
             all_sprites.add(powerup)
             powerups.add(powerup)
@@ -570,10 +617,6 @@ while running:
 pygame.quit()
 
 
-
-
-#player animation 
-#powerup spawn random
-#optimisation?
-#comment?
-#score font size
+# optimisation?
+# comment?
+# score font size
