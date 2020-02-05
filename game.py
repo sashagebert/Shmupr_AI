@@ -616,7 +616,3 @@ while running:
 
 pygame.quit()
 
-
-# optimisation?
-# comment?
-# score font size
