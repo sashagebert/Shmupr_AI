@@ -47,14 +47,24 @@ clock = pygame.time.Clock()
 font_name = pygame.font.match_font('arial')
 
 
-# Spawn new enemy
-def new_enemy():
-    if random.uniform(0, 1) < 0.4:
-        e = Updgraded_Enemy()
-    else:
-        e = Regular_Enemy()
+# Spawn enemies
+def spawn_regular_enemy():
+    e = RegularEnemy()
     all_sprites.add(e)
     enemies.add(e)
+
+
+def spawn_upgraded_enemy():
+    e = UpdgradedEnemy()
+    all_sprites.add(e)
+    enemies.add(e)
+
+
+def spawn_random_enemy():
+    if random.uniform(0, 1) < 0.5:
+        spawn_upgraded_enemy()
+    else:
+        spawn_regular_enemy()
 
 # Draw health bar
 
@@ -139,7 +149,7 @@ class Enemy(pygame.sprite.Sprite):
 # Enemy child class
 
 
-class Regular_Enemy(Enemy):
+class RegularEnemy(Enemy):
     def __init__(self):
         self.image = regular_enemy_img
         self.image.set_colorkey(BLACK)
@@ -158,7 +168,7 @@ class Regular_Enemy(Enemy):
 # Enemy child class
 
 
-class Updgraded_Enemy(Enemy):
+class UpdgradedEnemy(Enemy):
     def __init__(self):
         self.image = upgraded_enemy_img
         self.image.set_colorkey(BLACK)
@@ -251,9 +261,15 @@ enemy_lasers = pygame.sprite.Group()
 player = Player()
 all_sprites.add(player)
 
-# Spawn 5 enemies initially
-for i in range(5):
-    new_enemy()
+# Spawn 7 enemies initially, 2 of them have to me upgraded enemies
+for i in range(4):
+    e = RegularEnemy()
+    all_sprites.add(e)
+    enemies.add(e)
+for i in range(2):
+    e = UpdgradedEnemy()
+    all_sprites.add(e)
+    enemies.add(e)
 
 
 pygame.mixer.music.play(loops=-1)
@@ -275,8 +291,8 @@ while running:
 
         elif event.type == ENEMYSHOT:
             for enemy in enemies:
-                if type(enemy) == Updgraded_Enemy:
-                    if random.uniform(0, 1) < 0.5:
+                if type(enemy) == UpdgradedEnemy:
+                    if random.uniform(0, 1) < 0.4:
                         enemy.shoot()
 
     # Update sprites
@@ -296,11 +312,11 @@ while running:
     # Check if an enemy is hit by a players laser
     for hit in hits:
         enemy_exp_sound.play()
-        if type(hit) == Regular_Enemy:
+        if type(hit) == RegularEnemy:
             score += 10
         else:
             score += 20
-        new_enemy()
+        spawn_random_enemy()
 
     # check if an enemy hit the player
     hits = pygame.sprite.spritecollide(
@@ -308,10 +324,9 @@ while running:
     for hit in hits:
         player_exp_sound.play()
         player.health -= 40
-        print(player.health)
         if player.health <= 0:
             running = False
-        new_enemy()
+        spawn_random_enemy()
 
     # Render
     window.fill(BLACK)
