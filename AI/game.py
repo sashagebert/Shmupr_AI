@@ -2,7 +2,7 @@ import pygame
 import os
 import random
 from os import path
-
+import neat
 
 # Sound effects from:
 #   Ted Kerr
@@ -523,6 +523,7 @@ double_tap_sound = pygame.mixer.Sound(
     path.join(sound_dir, 'double_tap.wav'))
 double_tap_sound.set_volume(0.2)
 
+
 def main():
     show_start_screen()
     initialise_game()
@@ -617,4 +618,24 @@ def main():
     quit()
 
 main()
+
+
+def run (config_path):
+    config = neat.config.Config(neat.DeafultGenome, neat.DeafultReproduction,
+            neat.DeafultSpecieSet, neat.DefaultStagnation, config_path)
+    
+    p = neat.Population(config)
+
+    p.add_reporter(neat.StdOutReporter(True))
+    stats = neat.StatisticsReporter()
+    p.add_reporter(stats)
+
+    winner = p.run(,50)
+
+
+
+if __name__ == "__main__":
+    local_dir = os.path.dirname(__file__)
+    config_path = os.path.join(local_dir, 'config.txt')
+    run(config_path)
 
