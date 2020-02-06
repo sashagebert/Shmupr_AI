@@ -528,7 +528,6 @@ game_over = False
 running = True
 # Loop
 while running:
-    print(player.health)
     if game_over:
         show_game_over_screen()
         game_over = False
