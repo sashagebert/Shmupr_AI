@@ -126,12 +126,12 @@ def initialise_game():
     player = Player()
     all_sprites.add(player)
 
-    # Spawn 7 enemies initially, 2 of them have to be upgraded enemies
-    for i in range(4):
+    # Spawn 10 enemies initially, 4 of them have to be upgraded enemies
+    for i in range(6):
         e = RegularEnemy()
         all_sprites.add(e)
         enemies.add(e)
-    for i in range(2):
+    for i in range(4):
         e = UpdgradedEnemy()
         all_sprites.add(e)
         enemies.add(e)
@@ -289,14 +289,14 @@ class Player(pygame.sprite.Sprite):
         expl = Explosion(hit.rect.center, size)
         all_sprites.add(expl)
         if size == 'sm':
-            player.health -= 30
+            player.health -= 35
         else:
-            player.health -= 70
+            player.health -= 100
 
     def gun_powerup(self):
         self.is_poweredup = True
         self.powerup_time = pygame.time.get_ticks()
-        player.shoot_delay = 125
+        player.shoot_delay = 200
 
 
 # Enemy class
@@ -528,6 +528,7 @@ game_over = False
 running = True
 # Loop
 while running:
+    print(player.health)
     if game_over:
         show_game_over_screen()
         game_over = False
@@ -568,21 +569,18 @@ while running:
         player, enemy_lasers, True, pygame.sprite.collide_circle)
     for hit in hits:
         player_exp_sound.play()
+        player.isShot('sm')
         if player.health <= 0:
             player.dead()
-        else:
-            player.isShot('sm')
 
     # check if an enemy hit the player
     hits = pygame.sprite.spritecollide(
         player, enemies, True, pygame.sprite.collide_circle)
     for hit in hits:
         player_exp_sound.play()
+        player.isShot('rg')
         if player.health <= 0:
             player.dead()
-        else:
-            player.isShot('rg')
-
         spawn_random_enemy()
 
     # check if player collides with a powerup
@@ -590,7 +588,7 @@ while running:
     for hit in hits:
         if hit.type == 'recharge':
             recharge_sound.play()
-            player.health += 50
+            player.health += 20
             if player.health >= 100:
                 player.health = 100
         elif hit.type == 'shield':
